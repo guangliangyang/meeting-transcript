@@ -77,8 +77,8 @@ class MeetingAssistant:
 
         if not transcript:
             self.ui.show_error("No transcript available to summarize.")
-            self._running = False
-            return
+            self._cleanup()
+            sys.exit(0)
 
         # Generate summary
         advice_history = self.advisor.get_advice_history()
@@ -91,7 +91,9 @@ class MeetingAssistant:
         filepath = self.summarizer.save_meeting(transcript, summary, advice_history)
         self.ui.show_saved(str(filepath))
 
-        self._running = False
+        # Exit application
+        self._cleanup()
+        sys.exit(0)
 
     def _setup_hotkeys(self) -> None:
         """Register global hotkeys."""
