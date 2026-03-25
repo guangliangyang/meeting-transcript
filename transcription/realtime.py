@@ -25,91 +25,79 @@ class RealtimeTranscriber:
         self._lock = threading.Lock()
         self._running = False
 
-        # Track the longest text seen - only output what extends beyond it
-        self._longest_seen = ""
+        # Track captions
+        self._last_output_caption = ""  # Caption at last output
+        self._current_caption = ""  # Current full caption
+        self._last_output_time = 0
+        self._output_interval = 10  # Output every 10 seconds
         self._poll_interval = 0.5
 
     def _find_captions_window(self):
         """Find the Windows Live Captions window."""
         try:
             desktop = Desktop(backend="uia")
+            # Try to find by title
             windows = desktop.windows(title_re=".*Live captions.*|.*Captions.*")
             if windows:
                 return windows[0]
+            # Fallback search
             for win in desktop.windows():
                 try:
                     if "caption" in win.window_text().lower():
                         return win
                 except:
                     pass
-        except Exception as e:
+        except Exception:
             pass
         return None
 
     def _get_caption_text(self, window) -> str:
-        """Extract text from the captions window."""
+        """Extract the main caption text from the window.
+
+        Tries to find the Text control that contains the actual captions.
+        """
         try:
-            # Skip UI elements
-            skip = {'settings', 'close', 'minimize', 'maximize', 'live captions', ''}
-            texts = []
+            best_text = ""
+
+            # Look for Text controls (these typically hold the caption content)
             for child in window.descendants():
                 try:
+                    # Get control type
+                    ctrl_type = child.element_info.control_type
                     text = child.window_text()
-                    if text and len(text) > 5 and text.lower().strip() not in skip:
-                        texts.append(text.strip())
-                except:
+
+                    if not text or len(text) < 10:
+                        continue
+
+                    # Skip UI elements
+                    text_lower = text.lower().strip()
+                    if text_lower in {'settings', 'close', 'minimize', 'maximize',
+                                      'live captions', ''}:
+                        continue
+                    if text_lower.startswith('ready to show'):
+                        continue
+                    if text_lower.startswith('getting ready'):
+                        continue
+                    if text_lower.startswith('taking a little'):
+                        continue
+
+                    # Prefer Text controls, but accept others
+                    # Take the longest text found
+                    if len(text) > len(best_text):
+                        best_text = text.strip()
+
+                except Exception:
                     pass
-            return texts  # Return list of all texts
-        except:
-            return []
 
-    def _find_new_content(self, texts: list) -> str:
-        """Find new content from the list of texts."""
-        if not texts:
+            return best_text
+        except Exception:
             return ""
-
-        # Skip status messages
-        skip_phrases = ['ready to show', 'getting ready', 'taking a little longer']
-        seen_lower = self._longest_seen.lower() if self._longest_seen else ""
-
-        # Look for text that EXTENDS our previous text (priority)
-        best_extending = None
-        best_new_part = ""
-
-        for text in texts:
-            text = text.strip()
-            if len(text) < 20:
-                continue
-            if any(phrase in text.lower() for phrase in skip_phrases):
-                continue
-
-            text_lower = text.lower()
-
-            # First time - take any text > 20 chars
-            if not self._longest_seen:
-                if best_extending is None or len(text) > len(best_extending):
-                    best_extending = text
-                continue
-
-            # Look for text that CONTAINS our previous (it extended)
-            if seen_lower in text_lower and len(text) > len(self._longest_seen):
-                idx = text_lower.find(seen_lower) + len(seen_lower)
-                new_part = text[idx:].strip()
-                if len(text) > len(best_extending or ""):
-                    best_extending = text
-                    best_new_part = new_part
-
-        # Found extending text - return just the new part
-        if best_extending:
-            self._longest_seen = best_extending
-            return best_new_part if best_new_part else (best_extending if not seen_lower else "")
-
-        return ""
 
     def _poll_captions(self) -> None:
         """Poll the Live Captions window for new text."""
         window = None
         retry_count = 0
+        self._last_output_time = time.time()
 
         while self._running:
             try:
@@ -126,26 +114,17 @@ class RealtimeTranscriber:
                         print("[INFO] Found Live Captions window!")
                         retry_count = 0
 
-                # Get current texts from window
-                texts = self._get_caption_text(window)
+                # Get current caption text
+                current_caption = self._get_caption_text(window)
 
-                # Skip if no texts
-                if not texts:
-                    time.sleep(self._poll_interval)
-                    continue
+                if current_caption:
+                    self._current_caption = current_caption
 
-                # Find only the NEW content
-                new_content = self._find_new_content(texts)
-
-                if new_content and len(new_content) > 2:
-                    timestamp = datetime.now().strftime("%H:%M:%S")
-                    transcript_entry = f"[{timestamp}] {new_content}"
-
-                    with self._lock:
-                        self._transcript_parts.append(transcript_entry)
-
-                    if self.on_transcript:
-                        self.on_transcript(transcript_entry)
+                # Check if it's time to output (every 10 seconds)
+                current_time = time.time()
+                if current_time - self._last_output_time >= self._output_interval:
+                    self._flush_new_text()
+                    self._last_output_time = current_time
 
             except ElementNotFoundError:
                 window = None
@@ -154,6 +133,81 @@ class RealtimeTranscriber:
                 window = None
 
             time.sleep(self._poll_interval)
+
+    def _flush_new_text(self) -> None:
+        """Output new text since last output."""
+        if not self._current_caption:
+            return
+
+        curr = self._current_caption
+        last = self._last_output_caption
+
+        if not last:
+            # First output - use all current text
+            new_text = curr
+        else:
+            # Find the longest common prefix (fuzzy - ignore minor differences)
+            new_text = self._find_new_portion(last, curr)
+
+        if new_text and len(new_text) > 5:
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            transcript_entry = f"[{timestamp}] {new_text}"
+
+            with self._lock:
+                self._transcript_parts.append(transcript_entry)
+
+            if self.on_transcript:
+                self.on_transcript(transcript_entry)
+
+        # Update last output caption
+        self._last_output_caption = self._current_caption
+
+    def _find_new_portion(self, last: str, curr: str) -> str:
+        """Find new portion by matching words, not exact characters."""
+        if len(curr) <= len(last):
+            return ""
+
+        # Split into words for fuzzy matching
+        last_words = last.lower().split()
+        curr_words = curr.lower().split()
+
+        if not last_words:
+            return curr
+
+        # Find where last text ends in current (by word matching)
+        # Look for a sequence of last words in curr words
+        last_len = len(last_words)
+
+        # Try to find the last few words of 'last' in 'curr'
+        # Start from the end of 'last' and look for matches
+        match_start = -1
+        for i in range(len(curr_words) - 3):
+            # Check if a sequence of words matches the end of last
+            if curr_words[i:i+min(5, last_len)] == last_words[-min(5, last_len):]:
+                match_start = i + min(5, last_len)
+                break
+
+        if match_start > 0 and match_start < len(curr_words):
+            # Return words after the match point
+            # Reconstruct from original curr (preserve case/punctuation)
+            # Find approximate character position
+            word_count = 0
+            char_pos = 0
+            for i, char in enumerate(curr):
+                if char == ' ':
+                    word_count += 1
+                    if word_count >= match_start:
+                        char_pos = i + 1
+                        break
+
+            return curr[char_pos:].strip() if char_pos > 0 else ""
+
+        # Fallback: use character length approximation
+        # Take everything after the length of last text
+        if len(curr) > len(last) + 10:
+            return curr[len(last):].strip()
+
+        return ""
 
     def _open_live_captions(self) -> None:
         """Auto-open Windows Live Captions."""
@@ -172,10 +226,12 @@ class RealtimeTranscriber:
             return
 
         self._running = True
-        self._longest_seen = ""
+        self._last_output_caption = ""
+        self._current_caption = ""
 
         print("=" * 60)
         print("Starting Windows Live Captions capture...")
+        print(f"Transcript output interval: {self._output_interval} seconds")
         print("=" * 60)
 
         self._open_live_captions()
@@ -185,6 +241,8 @@ class RealtimeTranscriber:
 
     def stop(self) -> None:
         """Stop capturing."""
+        # Flush any remaining text
+        self._flush_new_text()
         self._running = False
 
     def get_full_transcript(self) -> str:
@@ -201,7 +259,8 @@ class RealtimeTranscriber:
         """Clear all transcript data."""
         with self._lock:
             self._transcript_parts.clear()
-        self._longest_seen = ""
+        self._last_output_caption = ""
+        self._current_caption = ""
 
     def save_transcript(self, filepath: str) -> None:
         """Save transcript to a file."""
