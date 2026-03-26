@@ -28,11 +28,14 @@ HOTKEY_EXIT = "esc"
 # Gemini settings
 GEMINI_MODEL = "gemini-2.5-flash"
 
+# Grok settings (via OpenCLI)
+GROK_TIMEOUT = int(os.getenv("GROK_TIMEOUT", "120"))
+
 def validate_config():
     """Validate that required configuration is present."""
     if not GEMINI_API_KEY:
-        raise ValueError(
-            "GEMINI_API_KEY not found. "
-            "Please create a .env file with your API key. "
-            "Get one from: https://aistudio.google.com/apikey"
+        print(
+            "[WARN] GEMINI_API_KEY not found. "
+            "Will use Grok fallback if available. "
+            "Get Gemini key from: https://aistudio.google.com/apikey"
         )

@@ -1,9 +1,8 @@
-"""Dev advisor using Gemini."""
+"""Dev advisor using AI provider."""
 
 import threading
 from typing import Callable, Optional
-import google.generativeai as genai
-from config import GEMINI_API_KEY, GEMINI_MODEL
+from ai.factory import get_provider
 
 
 class DevAdvisor:
@@ -20,11 +19,8 @@ class DevAdvisor:
         self._lock = threading.Lock()
         self._advice_history: list[str] = []
 
-        # Configure Gemini
-        genai.configure(api_key=GEMINI_API_KEY)
-
-        # Create model
-        self._model = genai.GenerativeModel(model_name=GEMINI_MODEL)
+        # Get AI provider (Gemini with Grok fallback)
+        self._provider = get_provider()
 
     def get_advice(self, meeting_context: str, specific_question: str = "") -> str:
         """
@@ -71,10 +67,10 @@ Analyze the current software development discussion and provide helpful advice:
 
 Focus on the most recent topic being discussed."""
 
-            # Generate response with grounding
-            response = self._model.generate_content(prompt)
-
-            advice = response.text.strip() if response.text else "Unable to generate advice."
+            # Generate response
+            advice = self._provider.generate(prompt)
+            if not advice:
+                advice = "Unable to generate advice."
 
             with self._lock:
                 self._advice_history.append(advice)
@@ -101,8 +97,8 @@ Focus on the most recent topic being discussed."""
 
 Provide a BRIEF (2-3 sentences) software development suggestion or answer for what's currently being discussed. Be direct and actionable."""
 
-            response = self._model.generate_content(prompt)
-            return response.text.strip() if response.text else "No suggestion available."
+            response = self._provider.generate(prompt)
+            return response if response else "No suggestion available."
 
         except Exception as e:
             return f"Error: {e}"

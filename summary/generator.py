@@ -1,9 +1,9 @@
-"""Meeting summary generator using Gemini."""
+"""Meeting summary generator using AI provider."""
 
 from datetime import datetime
 from pathlib import Path
-import google.generativeai as genai
-from config import GEMINI_API_KEY, GEMINI_MODEL, OUTPUT_DIR
+from ai.factory import get_provider
+from config import OUTPUT_DIR
 
 
 class SummaryGenerator:
@@ -11,8 +11,7 @@ class SummaryGenerator:
 
     def __init__(self):
         """Initialize summary generator."""
-        genai.configure(api_key=GEMINI_API_KEY)
-        self._model = genai.GenerativeModel(GEMINI_MODEL)
+        self._provider = get_provider()
 
     def generate_summary(self, transcript: str, advice_history: list[str] = None) -> str:
         """
@@ -64,8 +63,8 @@ Please generate a comprehensive meeting summary with the following sections:
 
 Keep the summary concise but comprehensive."""
 
-            response = self._model.generate_content(prompt)
-            return response.text.strip() if response.text else "Unable to generate summary."
+            response = self._provider.generate(prompt)
+            return response if response else "Unable to generate summary."
 
         except Exception as e:
             return f"Error generating summary: {e}"
@@ -138,8 +137,8 @@ etc.
 
 Only include actual action items, not general discussion points."""
 
-            response = self._model.generate_content(prompt)
-            return response.text.strip() if response.text else "No action items found."
+            response = self._provider.generate(prompt)
+            return response if response else "No action items found."
 
         except Exception as e:
             return f"Error extracting action items: {e}"
