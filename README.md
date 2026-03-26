@@ -4,7 +4,9 @@ Real-time meeting transcription with AI-powered software development advice.
 
 ## Features
 
-- **Real-time Transcription**: Captures meeting audio via Windows Live Captions
+- **Real-time Transcription**: Cross-platform speech-to-text
+  - Windows: Uses Windows Live Captions
+  - macOS/Linux: Uses Google Speech Recognition API
 - **AI Dev Advice**: Get contextual software development suggestions on-demand
 - **Meeting Summary**: Auto-generates comprehensive meeting summaries
 - **Action Items**: Extracts action items and decisions from discussions
@@ -12,12 +14,18 @@ Real-time meeting transcription with AI-powered software development advice.
 
 ## Requirements
 
-- **Windows 10/11** (uses Windows Live Captions)
 - **Python 3.10+**
 - **Gemini API key** (optional - will fallback to Grok)
 - **OpenCLI** (for Grok fallback, optional)
 
+### Platform-specific
+- **Windows**: Windows 10/11 with Live Captions
+- **macOS**: macOS 10.15+ with microphone access
+- **Linux**: PulseAudio or ALSA for microphone access
+
 ## Installation
+
+### All Platforms
 
 1. Clone the repository:
 ```bash
@@ -28,21 +36,56 @@ cd meeting-assistant
 2. Create and activate virtual environment:
 ```bash
 python -m venv .venv
+
+# Windows
 .venv\Scripts\activate
+
+# macOS/Linux
+source .venv/bin/activate
 ```
 
-3. Install dependencies:
+3. Install base dependencies:
 ```bash
 pip install -r requirements.txt
+```
+
+### Windows Setup
+
+```bash
 pip install pywinauto
 ```
 
-4. Configure environment:
+### macOS Setup
+
 ```bash
-copy .env.example .env
+# Install portaudio first
+brew install portaudio
+
+# Then install PyAudio
+pip install pyaudio
 ```
 
-5. Edit `.env` and add your Gemini API key:
+### Linux Setup
+
+```bash
+# Debian/Ubuntu
+sudo apt-get install portaudio19-dev python3-pyaudio
+
+# Then install PyAudio
+pip install pyaudio
+```
+
+### Configure Environment
+
+```bash
+# Windows
+copy .env.example .env
+
+# macOS/Linux
+cp .env.example .env
+```
+
+Edit `.env` and add your Gemini API key:
 ```
 GEMINI_API_KEY=your_api_key_here
 ```
@@ -57,7 +100,7 @@ Get your API key from: https://aistudio.google.com/apikey
 python main.py
 ```
 
-Or use the batch file:
+Windows users can also use:
 ```bash
 run.bat
 ```
@@ -72,9 +115,13 @@ run.bat
 
 ### Windows Live Captions
 
-The assistant uses Windows Live Captions for transcription. It will auto-open, or you can open manually:
+On Windows, the assistant uses Windows Live Captions for transcription. It will auto-open, or you can open manually:
 
 **Press `Win+Ctrl+L`** to open Windows Live Captions
+
+### macOS/Linux
+
+On macOS and Linux, the assistant uses your microphone directly with Google Speech Recognition. Ensure microphone permissions are granted.
 
 ## Output
 
@@ -102,8 +149,11 @@ meeting-assistant/
 │   └── factory.py       # FallbackProvider (Gemini → Grok)
 ├── audio/               # Audio capture module
 │   └── capture.py       # Microphone capture (sounddevice)
-├── transcription/       # Transcription module
-│   └── realtime.py      # Windows Live Captions integration
+├── transcription/       # Transcription module (cross-platform)
+│   ├── base.py          # BaseTranscriber interface
+│   ├── windows.py       # Windows Live Captions
+│   ├── macos.py         # macOS/Linux Speech Recognition
+│   └── factory.py       # Platform detection & transcriber factory
 ├── assistant/           # Dev advisor module
 │   └── advisor.py       # AI-powered dev advice
 ├── summary/             # Summary generation
@@ -143,14 +193,20 @@ Environment variables (`.env`):
 
 ## Dependencies
 
-- `sounddevice` - Audio capture
-- `numpy`, `scipy` - Audio processing
+### Core
 - `SpeechRecognition` - Speech recognition
 - `google-generativeai` - Gemini API
 - `keyboard` - Global hotkeys
 - `rich` - Console UI
 - `python-dotenv` - Environment config
-- `pywinauto` - Windows Live Captions integration
+
+### Audio
+- `sounddevice` - Audio capture
+- `numpy`, `scipy` - Audio processing
+
+### Platform-specific
+- `pywinauto` - Windows Live Captions integration (Windows only)
+- `pyaudio` - Microphone access (macOS/Linux)
 
 ## License
 

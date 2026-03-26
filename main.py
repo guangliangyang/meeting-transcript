@@ -9,7 +9,7 @@ from config import (
     HOTKEY_END_MEETING,
     HOTKEY_EXIT
 )
-from transcription.realtime import RealtimeTranscriber
+from transcription import get_transcriber
 from assistant.advisor import DevAdvisor
 from summary.generator import SummaryGenerator
 from ui.console import ConsoleUI
@@ -21,7 +21,7 @@ class MeetingAssistant:
     def __init__(self):
         """Initialize meeting assistant components."""
         self.ui = ConsoleUI()
-        self.transcriber = RealtimeTranscriber(on_transcript=self._on_transcript)
+        self.transcriber = get_transcriber(on_transcript=self._on_transcript)
         self.advisor = DevAdvisor(on_advice=self._on_advice)
         self.summarizer = SummaryGenerator()
 

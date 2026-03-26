@@ -5,6 +5,8 @@ import time
 from datetime import datetime
 from typing import Callable, Optional
 
+from transcription.base import BaseTranscriber
+
 try:
     from pywinauto import Desktop
     from pywinauto.findwindows import ElementNotFoundError
@@ -13,14 +15,15 @@ except ImportError:
     HAS_PYWINAUTO = False
 
 
-class RealtimeTranscriber:
+class WindowsTranscriber(BaseTranscriber):
     """Captures transcription from Windows Live Captions."""
 
     def __init__(self, on_transcript: Optional[Callable[[str], None]] = None):
-        if not HAS_PYWINAUTO:
-            raise ImportError("pywinauto is required")
+        super().__init__(on_transcript)
 
-        self.on_transcript = on_transcript
+        if not HAS_PYWINAUTO:
+            raise ImportError("pywinauto is required for Windows transcription")
+
         self._transcript_parts: list[str] = []
         self._lock = threading.Lock()
         self._running = False
