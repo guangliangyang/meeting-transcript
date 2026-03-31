@@ -3,6 +3,7 @@
 import threading
 from typing import Callable, Optional
 from ai.factory import get_provider
+from config import get_advisor_prompt
 
 
 class DevAdvisor:
@@ -39,33 +40,14 @@ class DevAdvisor:
         try:
             # Build the prompt
             if specific_question:
-                prompt = f"""Based on this meeting discussion:
-
-{meeting_context}
-
-Specific question: {specific_question}
-
-Please provide software development advice. Include:
-1. Direct answer to the question
-2. Relevant code examples if applicable
-3. Recommended libraries or frameworks
-4. Links to documentation or resources
-
-Search the web for the latest information."""
+                prompt = get_advisor_prompt('specific_question').format(
+                    meeting_context=meeting_context,
+                    specific_question=specific_question
+                )
             else:
-                prompt = f"""Based on this meeting discussion:
-
-{meeting_context}
-
-Analyze the current software development discussion and provide helpful advice:
-
-1. **Architecture Recommendations**: Suggest design patterns or architectural approaches
-2. **Libraries & Tools**: Recommend relevant libraries, frameworks, or tools
-3. **Best Practices**: Highlight relevant best practices
-4. **Code Suggestions**: Provide code snippets if applicable
-5. **Resources**: Link to relevant documentation or tutorials
-
-Focus on the most recent topic being discussed."""
+                prompt = get_advisor_prompt('full_advice').format(
+                    meeting_context=meeting_context
+                )
 
             # Generate response
             advice = self._provider.generate(prompt)
@@ -91,11 +73,9 @@ Focus on the most recent topic being discussed."""
             return "No context available."
 
         try:
-            prompt = f"""Based on this recent meeting discussion:
-
-{meeting_context}
-
-Provide a BRIEF (2-3 sentences) software development suggestion or answer for what's currently being discussed. Be direct and actionable."""
+            prompt = get_advisor_prompt('quick_answer').format(
+                meeting_context=meeting_context
+            )
 
             response = self._provider.generate(prompt)
             return response if response else "No suggestion available."

@@ -37,6 +37,9 @@ if not exist dist\meeting-assistant\.env.example (
     copy .env.example dist\meeting-assistant\.env.example
 )
 
+REM Copy prompts.yaml
+copy prompts.yaml dist\meeting-assistant\prompts.yaml
+
 REM Create a readme for the release
 echo.
 echo Creating release readme...

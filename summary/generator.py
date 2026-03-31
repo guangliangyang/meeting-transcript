@@ -3,7 +3,7 @@
 from datetime import datetime
 from pathlib import Path
 from ai.factory import get_provider
-from config import OUTPUT_DIR
+from config import OUTPUT_DIR, get_summary_prompt
 
 
 class SummaryGenerator:
@@ -35,33 +35,7 @@ class SummaryGenerator:
                 advice_text = "\n\n".join(advice_history)
                 context += f"\n\nAI Advice Given During Meeting:\n{advice_text}"
 
-            prompt = f"""{context}
-
-Please generate a comprehensive meeting summary with the following sections:
-
-## Meeting Summary
-
-### Key Discussion Points
-- List the main topics discussed
-
-### Decisions Made
-- List any decisions or conclusions reached
-
-### Action Items
-- List any tasks or follow-ups mentioned
-
-### Technical Topics
-- Summarize any technical discussions
-- Include relevant architecture decisions
-- Note any libraries/tools mentioned
-
-### Questions Raised
-- List any unresolved questions or concerns
-
-### Next Steps
-- Summarize what needs to happen next
-
-Keep the summary concise but comprehensive."""
+            prompt = get_summary_prompt('generate_summary').format(context=context)
 
             response = self._provider.generate(prompt)
             return response if response else "Unable to generate summary."
@@ -126,16 +100,7 @@ Keep the summary concise but comprehensive."""
             return "No transcript available."
 
         try:
-            prompt = f"""From this meeting transcript, extract a list of action items:
-
-{transcript}
-
-Format as a checklist:
-- [ ] Action item 1 (who is responsible if mentioned)
-- [ ] Action item 2
-etc.
-
-Only include actual action items, not general discussion points."""
+            prompt = get_summary_prompt('action_items').format(transcript=transcript)
 
             response = self._provider.generate(prompt)
             return response if response else "No action items found."

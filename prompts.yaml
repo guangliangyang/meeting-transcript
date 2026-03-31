@@ -1,0 +1,93 @@
+# Meeting Assistant - Customizable Prompts
+# You can modify these prompts to customize AI behavior
+# Use {variable_name} for placeholders that will be replaced at runtime
+
+summary:
+  # Used when generating the final meeting summary
+  # Variables: {context} - meeting transcript with any advice given
+  generate_summary: |
+    {context}
+
+    Please generate a comprehensive meeting summary with the following sections:
+
+    ## Meeting Summary
+
+    ### Key Discussion Points
+    - List the main topics discussed
+
+    ### Decisions Made
+    - List any decisions or conclusions reached
+
+    ### Action Items
+    - List any tasks or follow-ups mentioned
+
+    ### Technical Topics
+    - Summarize any technical discussions
+    - Include relevant architecture decisions
+    - Note any libraries/tools mentioned
+
+    ### Questions Raised
+    - List any unresolved questions or concerns
+
+    ### Next Steps
+    - Summarize what needs to happen next
+
+    Keep the summary concise but comprehensive.
+
+  # Used to extract action items from transcript
+  # Variables: {transcript} - full meeting transcript
+  action_items: |
+    From this meeting transcript, extract a list of action items:
+
+    {transcript}
+
+    Format as a checklist:
+    - [ ] Action item 1 (who is responsible if mentioned)
+    - [ ] Action item 2
+    etc.
+
+    Only include actual action items, not general discussion points.
+
+advisor:
+  # Used when user asks for general dev advice (Ctrl+Space)
+  # Variables: {meeting_context} - recent discussion
+  full_advice: |
+    Based on this meeting discussion:
+
+    {meeting_context}
+
+    Analyze the current software development discussion and provide helpful advice:
+
+    1. **Architecture Recommendations**: Suggest design patterns or architectural approaches
+    2. **Libraries & Tools**: Recommend relevant libraries, frameworks, or tools
+    3. **Best Practices**: Highlight relevant best practices
+    4. **Code Suggestions**: Provide code snippets if applicable
+    5. **Resources**: Link to relevant documentation or tutorials
+
+    Focus on the most recent topic being discussed.
+
+  # Used when user asks a specific question
+  # Variables: {meeting_context}, {specific_question}
+  specific_question: |
+    Based on this meeting discussion:
+
+    {meeting_context}
+
+    Specific question: {specific_question}
+
+    Please provide software development advice. Include:
+    1. Direct answer to the question
+    2. Relevant code examples if applicable
+    3. Recommended libraries or frameworks
+    4. Links to documentation or resources
+
+    Search the web for the latest information.
+
+  # Used for quick 2-3 sentence answers
+  # Variables: {meeting_context}
+  quick_answer: |
+    Based on this recent meeting discussion:
+
+    {meeting_context}
+
+    Provide a BRIEF (2-3 sentences) software development suggestion or answer for what's currently being discussed. Be direct and actionable.

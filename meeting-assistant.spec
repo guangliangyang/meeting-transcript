@@ -73,6 +73,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('.env.example', '.'),
+        ('prompts.yaml', '.'),
     ],
     hiddenimports=hidden_imports,
     hookspath=[],
