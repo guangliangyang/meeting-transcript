@@ -47,6 +47,11 @@ hidden_imports = [
 
     # Our modules
     'config',
+    'requests',
+    'urllib3',
+    'certifi',
+    'rich.text',
+    'rich.padding',
     'ai',
     'ai.provider',
     'ai.gemini',
@@ -59,12 +64,22 @@ hidden_imports = [
     'transcription.factory',
     'transcription.windows',
     'transcription.macos',
+    'transcription.fake',
+    'translation',
+    'translation.provider',
+    'translation._http',
+    'translation.google_cloud',
+    'translation.google_single',
+    'translation.google_batch',
+    'translation.factory',
+    'translation.pipeline',
     'assistant',
     'assistant.advisor',
     'summary',
     'summary.generator',
     'ui',
     'ui.console',
+    'ui.encoding',
 ]
 
 a = Analysis(

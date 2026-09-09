@@ -4,10 +4,15 @@ import threading
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.padding import Padding
 from rich.table import Table
 from rich.text import Text
-from rich.live import Live
-from rich.layout import Layout
+
+TRANSCRIPT_STYLE = "white"
+TRANSLATION_STYLE = "dim cyan"
+# Width of the "[HH:MM:SS] " prefix, so the translation lines up under the text.
+# Applied as padding rather than a literal prefix so wrapped lines stay aligned.
+TRANSLATION_INDENT = 11
 
 
 class ConsoleUI:
@@ -19,7 +24,8 @@ class ConsoleUI:
         self._transcript_lines: list[str] = []
         self._current_advice: str = ""
         self._status: str = "Waiting..."
-        self._lock = threading.Lock()
+        # Reentrant: the pair renderer holds this across calls that also take it.
+        self._lock = threading.RLock()
 
     def show_header(self) -> None:
         """Display application header."""
@@ -47,7 +53,9 @@ class ConsoleUI:
         """Update and display current status."""
         with self._lock:
             self._status = status
-        self.console.print(f"[dim]Status:[/dim] {status}")
+            line = Text("Status: ", style="dim")
+            line.append(status)
+            self.console.print(line)
 
     def show_listening(self) -> None:
         """Show that audio capture is active."""
@@ -60,59 +68,92 @@ class ConsoleUI:
         )
         self.console.print()
 
-    def add_transcript(self, text: str) -> None:
-        """Add a transcript line."""
-        with self._lock:
-            self._transcript_lines.append(text)
+    def show_translation_status(self, enabled: bool, detail: str = "") -> None:
+        """Show whether live translation is active."""
+        if enabled:
+            body = Text("Live translation on", style="green")
+        else:
+            body = Text("Live translation off", style="yellow")
+        if detail:
+            body.append(f"  {detail}", style="dim")
+        self.console.print(Panel(body, border_style="cyan"))
+        self.console.print()
 
-        # Display the new transcript
-        self.console.print(f"[white]{text}[/white]")
+    def add_transcript(self, text: str) -> None:
+        """Add a transcript line with no translation."""
+        self.add_transcript_pair(text, "")
+
+    def add_transcript_pair(self, original: str, translation: str = "") -> None:
+        """Print a transcript line and, underneath it, its translation.
+
+        Both lines are written under the UI lock so an advice or summary panel
+        printed from another thread can never land between them.
+        """
+        with self._lock:
+            # English only - this feeds get_transcript_display, and the saved
+            # transcript must never contain the translation.
+            self._transcript_lines.append(original)
+
+            # Text() rather than markup interpolation: transcripts contain things
+            # like "list[str]" and "[inaudible]", which Rich would otherwise try
+            # to parse as style tags.
+            self.console.print(Text(original, style=TRANSCRIPT_STYLE))
+            if translation:
+                self.console.print(
+                    Padding(
+                        Text(translation, style=TRANSLATION_STYLE),
+                        (0, 0, 0, TRANSLATION_INDENT),
+                    )
+                )
 
     def show_advice(self, advice: str) -> None:
         """Display AI advice."""
         with self._lock:
             self._current_advice = advice
 
-        self.console.print()
-        self.console.print(
-            Panel(
-                Markdown(advice),
-                title="Dev Advice",
-                border_style="green",
-                padding=(1, 2)
+            self.console.print()
+            self.console.print(
+                Panel(
+                    Markdown(advice),
+                    title="Dev Advice",
+                    border_style="green",
+                    padding=(1, 2)
+                )
             )
-        )
-        self.console.print()
+            self.console.print()
 
     def show_thinking(self, message: str = "Getting advice...") -> None:
         """Show a thinking/loading indicator."""
-        self.console.print(f"[yellow]{message}[/yellow]")
+        with self._lock:
+            self.console.print(Text(message, style="yellow"))
 
     def show_summary(self, summary: str) -> None:
         """Display meeting summary."""
-        self.console.print()
-        self.console.print(
-            Panel(
-                Markdown(summary),
-                title="Meeting Summary",
-                border_style="blue",
-                padding=(1, 2)
+        with self._lock:
+            self.console.print()
+            self.console.print(
+                Panel(
+                    Markdown(summary),
+                    title="Meeting Summary",
+                    border_style="blue",
+                    padding=(1, 2)
+                )
             )
-        )
 
     def show_saved(self, filepath: str) -> None:
         """Show that meeting was saved."""
-        self.console.print()
-        self.console.print(
-            Panel(
-                f"[green]Meeting saved to:[/green]\n{filepath}",
-                border_style="green"
-            )
-        )
+        with self._lock:
+            body = Text("Meeting saved to:\n", style="green")
+            body.append(filepath)
+            self.console.print()
+            self.console.print(Panel(body, border_style="green"))
 
     def show_error(self, message: str) -> None:
         """Display an error message."""
-        self.console.print(f"[red]Error:[/red] {message}")
+        with self._lock:
+            line = Text("Error: ", style="red")
+            line.append(message)
+            self.console.print(line)
 
     def show_goodbye(self) -> None:
         """Display exit message."""

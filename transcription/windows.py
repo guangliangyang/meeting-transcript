@@ -1,11 +1,23 @@
 """Real-time transcription using Windows Live Captions."""
 
+import re
 import threading
 import time
 from datetime import datetime
 from typing import Callable, Optional
 
+from config import (
+    TRANSCRIPT_MAX_FLUSH_SECONDS,
+    TRANSCRIPT_MAX_PENDING_WORDS,
+    TRANSCRIPT_MIN_FLUSH_CHARS,
+    TRANSCRIPT_MIN_FLUSH_SECONDS,
+)
 from transcription.base import BaseTranscriber
+
+# A terminator followed by whitespace or the end of the buffer. Abbreviations
+# ("e.g.") false-trigger; the cost is one short line, which is not worth an
+# abbreviation list.
+_SENTENCE_END = re.compile(r"""[.!?](?:["')\]]+)?(?=\s|$)""")
 
 try:
     from pywinauto import Desktop
@@ -34,7 +46,17 @@ class WindowsTranscriber(BaseTranscriber):
         self._last_output_position = 0  # Position in _full_transcript at last output
 
         self._last_output_time = 0
-        self._output_interval = 10  # Output every 10 seconds
+        # Flush on sentence boundaries between a floor and a cap, so translated
+        # lines appear every few seconds instead of every ten.
+        self._output_min_interval = TRANSCRIPT_MIN_FLUSH_SECONDS
+        self._output_max_interval = TRANSCRIPT_MAX_FLUSH_SECONDS
+        self._output_min_chars = TRANSCRIPT_MIN_FLUSH_CHARS
+        self._output_max_words = TRANSCRIPT_MAX_PENDING_WORDS
+        # Serialises _output_from_buffer: stop() calls it from the hotkey thread
+        # while the poll thread may already be inside it.
+        self._output_lock = threading.Lock()
+        # Walking the UIA tree is the expensive part - capture and output are
+        # deliberately decoupled, so do not lower this to speed up output.
         self._poll_interval = 0.5
 
     def _find_captions_window(self):
@@ -174,11 +196,19 @@ class WindowsTranscriber(BaseTranscriber):
                         self._full_transcript += " " + new_content
                     self._last_seen_text = current_text
 
-                # Output every 10 seconds from OUR buffer
+                # Output from OUR buffer, preferring sentence boundaries
                 current_time = time.time()
-                if current_time - self._last_output_time >= self._output_interval:
+                elapsed = current_time - self._last_output_time
+                if elapsed >= self._output_max_interval:
                     self._output_from_buffer()
                     self._last_output_time = current_time
+                elif elapsed >= self._output_min_interval:
+                    pending = self._full_transcript[self._last_output_position:]
+                    if len(pending.strip()) >= self._output_min_chars:
+                        cut = self._find_flush_boundary(pending)
+                        if cut:
+                            self._output_from_buffer(limit=cut)
+                            self._last_output_time = current_time
 
             except ElementNotFoundError:
                 window = None
@@ -188,22 +218,60 @@ class WindowsTranscriber(BaseTranscriber):
 
             time.sleep(self._poll_interval)
 
-    def _output_from_buffer(self) -> None:
-        """Output new content from our buffer since last output."""
-        new_text = self._full_transcript[self._last_output_position:].strip()
+    def _find_flush_boundary(self, pending: str) -> int:
+        """Length of `pending` that ends on a sentence, or 0 to keep buffering.
 
-        if new_text and len(new_text) > 3:
-            timestamp = datetime.now().strftime("%H:%M:%S")
-            transcript_entry = f"[{timestamp}] {new_text}"
+        Live Captions can be configured with punctuation off, in which case no
+        terminator ever appears - hence the word-count fallback.
+        """
+        last = None
+        for match in _SENTENCE_END.finditer(pending):
+            last = match
 
-            with self._lock:
-                self._transcript_parts.append(transcript_entry)
+        if last is not None:
+            end = last.end()
+            # Absorb the following space so it does not lead the next segment.
+            while end < len(pending) and pending[end].isspace():
+                end += 1
+            return end
 
-            if self.on_transcript:
-                self.on_transcript(transcript_entry)
+        if len(pending.split()) >= self._output_max_words:
+            cut = pending.rfind(" ")
+            if cut > 0:
+                return cut + 1
 
-        # Update position for next output
-        self._last_output_position = len(self._full_transcript)
+        return 0
+
+    def _output_from_buffer(self, limit: Optional[int] = None) -> None:
+        """Output buffered content.
+
+        `limit` is a length relative to the current output position; None means
+        everything buffered so far.
+        """
+        with self._output_lock:
+            start = self._last_output_position
+            total = len(self._full_transcript)
+            end = total if limit is None else min(start + limit, total)
+
+            new_text = self._full_transcript[start:end].strip()
+
+            # Advance unconditionally: short fragments are noise and are meant to
+            # be discarded. `_full_transcript` is append-only, so these indices
+            # stay valid - if it ever gains trimming, decrement this by the same
+            # amount.
+            self._last_output_position = end
+
+            transcript_entry = None
+            if new_text and len(new_text) > 3:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                transcript_entry = f"[{timestamp}] {new_text}"
+
+                with self._lock:
+                    self._transcript_parts.append(transcript_entry)
+
+        # Callback outside both locks - it must not run with a lock held.
+        if transcript_entry and self.on_transcript:
+            self.on_transcript(transcript_entry)
 
     def _open_live_captions(self) -> None:
         """Auto-open Windows Live Captions."""
@@ -228,7 +296,10 @@ class WindowsTranscriber(BaseTranscriber):
 
         print("=" * 60)
         print("Starting Windows Live Captions capture...")
-        print(f"Transcript output interval: {self._output_interval} seconds")
+        print(
+            f"Transcript flush: {self._output_min_interval}-"
+            f"{self._output_max_interval}s, on sentence boundaries"
+        )
         print("=" * 60)
 
         self._open_live_captions()

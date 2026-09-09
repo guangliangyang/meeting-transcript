@@ -1,6 +1,8 @@
 """Transcriber factory for cross-platform support."""
 
+import os
 import sys
+from pathlib import Path
 from typing import Callable, Optional
 
 from transcription.base import BaseTranscriber
@@ -19,6 +21,12 @@ def get_transcriber(on_transcript: Optional[Callable[[str], None]] = None) -> Ba
         NotImplementedError: If platform is not supported
         ImportError: If required dependencies are missing
     """
+    fake = os.getenv("MEETING_ASSISTANT_FAKE_TRANSCRIPT")
+    if fake:
+        from transcription.fake import FakeTranscriber
+        print(f"[INFO] Using fake transcriber: {fake}")
+        return FakeTranscriber(on_transcript, Path(fake))
+
     if sys.platform == 'win32':
         from transcription.windows import WindowsTranscriber
         return WindowsTranscriber(on_transcript)
